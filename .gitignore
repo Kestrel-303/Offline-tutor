@@ -11,8 +11,10 @@ __pycache__/
 .env
 
 # Large or non-redistributable files (textbooks, models, databases)
-data/
-models/
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
 *.gguf
 *.pdf
 *.db
@@ -22,6 +24,7 @@ models/
 # Editor / OS
 .vscode/
 .idea/
+.qodo/
 .DS_Store
 Thumbs.db
 
