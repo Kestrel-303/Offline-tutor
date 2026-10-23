@@ -1,0 +1,39 @@
+[project]
+name = "offline-tutor"
+version = "0.1.0"
+description = "Offline AI math tutor for Ethiopian high school students."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "sympy>=1.14",
+]
+# llama-cpp-python is intentionally NOT listed here: from PyPI it compiles from
+# source. It was installed into .venv from the prebuilt CPU wheel index with:
+#   uv pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu --index-strategy unsafe-best-match
+# Note: `uv sync` removes packages not listed here, so it would uninstall it.
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "ruff>=0.17",
+    "pyright>=1.1.414",
+]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

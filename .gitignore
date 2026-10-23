@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.pyright/
+*.egg-info/
+
+# Secrets
+.env
+
+# Large or non-redistributable files (textbooks, models, databases)
+data/
+models/
+*.gguf
+*.pdf
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Android (later)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
