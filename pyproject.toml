@@ -1,7 +1,7 @@
 [project]
 name = "offline-tutor"
 version = "0.1.0"
-description = "Offline AI math tutor for Ethiopian high school students."
+description = "Offline AI math tutor for Ethiopian Grade 9 students."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,6 +13,10 @@ dependencies = [
 # Note: `uv sync` removes packages not listed here, so it would uninstall it.
 
 [dependency-groups]
+# PDF text extraction (dev-time content pipeline, not needed by the app).
+extract = [
+    "pymupdf>=1.26",
+]
 dev = [
     "pytest>=9.1",
     "ruff>=0.17",
@@ -27,8 +31,8 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.pyright]
-include = ["src", "tests"]
-extraPaths = ["src"]
+include = ["src", "tests", "scripts"]
+extraPaths = ["src", "scripts"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
@@ -36,4 +40,4 @@ typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "scripts"]
