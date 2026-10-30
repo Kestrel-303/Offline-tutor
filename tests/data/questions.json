@@ -1,0 +1,17 @@
+{
+  "_note": "Starter set. Review the math and wording; add textbook-style questions.",
+  "questions": [
+    {"id": "q01", "category": "one_step", "prompt": "Solve for x: x + 7 = 12", "equation": "x + 7 = 12", "expected_solution": "5", "should_refuse": false},
+    {"id": "q02", "category": "two_step", "prompt": "Solve for x: 2x + 3 = 11", "equation": "2x + 3 = 11", "expected_solution": "4", "should_refuse": false},
+    {"id": "q03", "category": "two_step", "prompt": "Solve for x: -3x + 7 = 1", "equation": "-3x + 7 = 1", "expected_solution": "2", "should_refuse": false},
+    {"id": "q04", "category": "brackets", "prompt": "Solve for x: 5(x - 2) = 3x + 4", "equation": "5(x - 2) = 3x + 4", "expected_solution": "7", "should_refuse": false},
+    {"id": "q05", "category": "fractions", "prompt": "Solve for x: x/3 + 2 = 5", "equation": "x/3 + 2 = 5", "expected_solution": "9", "should_refuse": false},
+    {"id": "q06", "category": "fraction_answer", "prompt": "Solve for x: 4x - 1 = 2", "equation": "4x - 1 = 2", "expected_solution": "3/4", "should_refuse": false},
+    {"id": "q07", "category": "negative_answer", "prompt": "Solve for x: 7 - 2x = 15", "equation": "7 - 2x = 15", "expected_solution": "-4", "should_refuse": false},
+    {"id": "q08", "category": "word_problem", "prompt": "A number is doubled and then 6 is added. The result is 20. What is the number? Use x for the number.", "equation": "2x + 6 = 20", "expected_solution": "7", "should_refuse": false},
+    {"id": "q09", "category": "no_solution", "prompt": "Solve for x: 2(x + 1) = 2x + 5", "equation": "2(x + 1) = 2x + 5", "expected_solution": "no solution", "should_refuse": false},
+    {"id": "q10", "category": "all_x", "prompt": "Solve for x: 3(x - 1) = 3x - 3", "equation": "3(x - 1) = 3x - 3", "expected_solution": "all x", "should_refuse": false},
+    {"id": "q11", "category": "off_topic", "prompt": "Who won the 2022 football World Cup?", "equation": null, "expected_solution": null, "should_refuse": true},
+    {"id": "q12", "category": "off_topic_math", "prompt": "Solve x^2 - 5x + 6 = 0", "equation": null, "expected_solution": null, "should_refuse": true}
+  ]
+}
