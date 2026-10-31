@@ -126,11 +126,68 @@ Python 3.12.10, uv 0.13.1, git 2.55.0, ruff 0.17.1, pyright 1.1.414, pytest 9.1.
 - Added: Content and curriculum, Model testing log, Weekly review.
 - Later: Android and mobile (Tier B), Student testing and feedback.
 - Tip: chats do not share context, so keep this file, README.md, and CLAUDE.md as the shared record. End important chats with a three-line summary to add here.
-## 11. Next steps
-1. Start of week 2 (Nov 2): phone measurements on the M13, the Termux experiment, and the 10-equation spot-check of the Grade 9 PDF (not done in week 1).
-2. Repo already exists with .gitignore, README.md, CLAUDE.md. GitHub privacy (private) is not yet verified: check it on github.com.
-3. Grade 9 PDF is in `data/` (not committed).
-4. Pick the exact unit scope for linear equations: 3.1 only, or 3.1 + 3.2.
-5. Run `scripts/llama_smoke_test.py` once with other apps closed; time llama3.2:1b and gemma3:1b.
-6. Check whether your target schools accept a link or video.
+
+## 11. Status as of 2026-10-31
+### Setup: done
+- Environment (confirmed by command output): Python 3.12.10, uv 0.13.1, git 2.55.0, ruff 0.17.1, pyright 1.1.414, pytest 9.1.1, sympy 1.14.0, llama-cpp-python 0.3.36 (prebuilt CPU wheel, no compiler needed), PyMuPDF (MuPDF 1.28.5; use `import pymupdf`, not `fitz`).
+- Laptop: i7-8665U (4 cores, 8 threads), 8 GB RAM (7,998 MB). About 3.7-3.8 GB free only with everything closed; 389-679 MB free with the usual apps open. Close Chrome, Edge, VS Code and Claude Code before any timing test. (Answers open question 7.)
+- Docker and PostgreSQL are installed but not needed and were not running.
+- Network is slow and unreliable. Downloads time out; rerun the same command (`ollama pull` resumes). Set `$env:UV_HTTP_TIMEOUT = "300"` for uv.
+- Repo: on GitHub as a private repo (privacy NOT yet verified in the browser). First commit pushed. A second commit (`.gitignore`/.gitkeep fix) is local only. Several other changes are uncommitted (see below). `uv.lock` must not be committed yet.
+- Claude Code works well when given one scoped task with explicit "do not" rules and a required walkthrough at the end.
+
+### Measurements so far (laptop, CPU only, one easy question, so a rough figure only)
+- qwen2.5:1.5b via Ollama, warm run: 8.77 s total, 14.5 tokens/s, 126 tokens, prompt eval 0.08 s (52-token prompt). Loaded size 1.2 GB at 4096 context.
+- llama3.2:1b and gemma3:1b are pulled but NOT yet timed.
+- qwen answered with LaTeX once and in plain text when told "Plain text only, no LaTeX." The app must always send that instruction, and the grader must still cope with LaTeX.
+- llama-cpp-python imports, but it has NOT yet generated text. `scripts/llama_smoke_test.py` exists but has not been run. Ollama's downloaded model file may load directly in llama-cpp-python (unverified).
+- The M13 phone is expected to be much slower than this laptop (my recollection is a weak CPU; not measured). A 500-token-prompt first-token measurement is still needed.
+- llama-cpp-python 0.3.36 generated text on 2026-10-31 (laptop, CPU, 4,119 MB free, n_ctx 2048, 4 threads) from Ollama's qwen2.5:1.5b blob file loaded directly: load 2.11 s (probably disk-cached), first token 0.60 s (prompt only ~40-50 tokens, estimated), 13.06 tokens/s (108 tokens, approximate count), answer correct, plain text. Single run. A ~500-token-prompt first-token measurement is still needed, on laptop and phone.
+- Cleanup committed locally (3 commits after b033920); nothing pushed yet; uv.lock intentionally uncommitted.
+
+### Textbook PDF (reported by Claude Code; not yet independently checked)
+- Text-based (no OCR needed). 375 pages, about 411k characters. 4 near-empty pages: 3, 11, 374, 375. No built-in table of contents.
+- Printed page number + 11 = PDF page number.
+- Unit 3, "Solving Equations", is PDF pages 116-161. 21 of 25 "linear equation" matches are in Unit 3.
+  - Section 3.1 (about pages 117-119): one-variable linear equations, a short revision.
+  - Section 3.2 (about pages 120-133): systems of two equations in two unknowns. Most of the material.
+  - Section page ranges were calculated from the contents page, not read page by page.
+- Known extraction defects: brackets come out as Ethiopic letters (about 290 in Unit 3); variables are Unicode math-italic letters; minus is U+2212; displayed equations are split across lines; every page has a repeated unit header and page number; odd spacing; contents-page leaders become U+FFFD. A normalizer is needed (NFKC, a minus mapping, a bracket mapping, line joining, header and footer stripping).
+- Extracted text lives in `data/extracted/` (git-ignored). `docs/pdf_recon.md` holds titles and page numbers only.
+
+### Code in the repo (reported by Claude Code)
+- `scripts/compare_models.py`: Ollama model comparison, SymPy grading, CSV output to git-ignored `results/`. `tests/test_compare_models.py`: 47 tests, passing. `tests/data/questions.json`: 12 self-written questions (10 in scope, 2 to be refused).
+- ruff, ruff format, pyright, pytest all clean as reported. I have not run them myself.
+- Known bug: the minus/times/divide replacements in `clean_answer` are corrupted ("mojibake"), so they never match, and the tests don't catch it.
+- To delete: `scripts/bench_models.py` and `scripts/questions.json` (superseded). To move: `book_test.py` into `scripts/`.
+- `pyproject.toml` still says "high school students". `pymupdf` is not listed anywhere, so plain `uv sync` would remove it and llama-cpp-python. Plan: put pymupdf in an "extract" dependency group; keep llama-cpp-python as a documented manual install.
+- Rule: write non-ASCII characters in code as `\u` escapes. Set `$env:PYTHONUTF8 = "1"` to avoid console encoding errors.
+
+### Not done / unverified
+- GitHub shows Private with no PDFs, `.gguf` or `.venv`.
+- Real llama-cpp-python generation test.
+- Timing of llama3.2:1b and gemma3:1b; the 10-question comparison.
+- Human spot-check of about 10 equations against the PDF (my eyes on the page, not Claude Code's).
+- Whether the model-comparison script has ever been run against real models.
+- M13 phone measurements, the Termux experiment, and any 4 GB phone test.
+- Textbook licensing terms.
+- The commit email question (commits carry a personal email; decide before ever making the repo public).
+
+### Decisions still needed
+1. Scope of "linear equations": section 3.1 only, or 3.1 plus 3.2. Current suggestion (not yet confirmed): ingest both sections as lessons, but build the grader and quiz templates for 3.1 only in Phase 1.
+2. Reply-time target: first token under 10 s, and a full short answer (about 100 tokens) under about 15 s on the phone (proposed, not confirmed).
+3. Keep the current commit email or switch to GitHub's private noreply address.
+
+### Timeline update
+Week 1 (Oct 26 - Nov 1) targets NOT met: phone measurements, Termux experiment, 10-equation spot-check. Moved to the start of week 2. The Nov 29 checkpoint and Dec 20 feature freeze are unchanged. Cut order is unchanged.
+
+### Next steps
+1. Run the Claude Code cleanup and commit task (fix mojibake, delete the old bench files, fix pyproject, update docs, three commits, no push).
+2. Verify the commits yourself (`git log --oneline -5`, `git status --short`).
+3. Spot-check about 10 equations on 2 PDF pages against the extracted text.
+4. Run the llama-cpp-python smoke test with everything closed.
+5. Run the 3-model comparison with everything closed; time llama3.2:1b and gemma3:1b.
+6. Confirm GitHub shows Private, then push.
+7. Write the text normalizer with tests (using made-up strings, never textbook text), then lesson chunks in SQLite (FTS5).
+8. M13 phone measurement and Termux experiment (exact steps to be written in the chat).
  
