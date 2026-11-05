@@ -1,11 +1,9 @@
-"""Build data/lessons.db from data/extracted/pages.jsonl. Prints counts only.
+"""Build data/lessons.db from data/extracted/pages_layout.jsonl.
 
-Deletes and recreates the database on each run. Never prints page text.
-Options pick another pages file, database path, and an optional chunk
-preview file, e.g. for the layout-aware extraction:
-
-  python scripts/build_lessons_db.py --pages-file data/extracted/pages_layout.jsonl
-      --db data/lessons_layout.db --preview data/extracted/chunk_preview_layout.txt
+Run scripts/extract_layout.py first to write the pages file. Deletes and
+recreates the database on each run. Prints counts only, never page text.
+Options pick another pages file (e.g. the plain data/extracted/pages.jsonl),
+database path, and an optional chunk preview file.
 """
 
 import argparse
@@ -18,11 +16,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from offline_tutor.chunk import Chunk, chunk_pages, find_section_pages  # noqa: E402
+from offline_tutor.chunk import (  # noqa: E402
+    Chunk,
+    ChunkStats,
+    chunk_pages_with_stats,
+    find_section_pages,
+)
 from offline_tutor.lesson_db import create_db, insert_chunks  # noqa: E402
 from offline_tutor.normalize import normalize_page  # noqa: E402
 
-PAGES_PATH = ROOT / "data" / "extracted" / "pages.jsonl"
+PAGES_PATH = ROOT / "data" / "extracted" / "pages_layout.jsonl"
 DB_PATH = ROOT / "data" / "lessons.db"
 
 # Lesson range: page where FIRST_SECTION starts through the page before
@@ -35,6 +38,10 @@ MAX_RANGE_DRIFT = 1
 
 def load_lesson_pages(pages_path: Path = PAGES_PATH) -> list[tuple[int, str]]:
     """Return normalized (page, text) pairs for the detected lesson range."""
+    if not pages_path.exists():
+        sys.exit(
+            f"{pages_path} not found; run scripts/extract_layout.py first to write it."
+        )
     with pages_path.open(encoding="utf-8") as f:
         rows = [json.loads(line) for line in f]
     pages = [(int(r["page"]), normalize_page(r["text"])) for r in rows]
@@ -50,7 +57,9 @@ def load_lesson_pages(pages_path: Path = PAGES_PATH) -> list[tuple[int, str]]:
     return [(p, t) for p, t in pages if first <= p <= last]
 
 
-def print_counts(pages: list[tuple[int, str]], chunks: list[Chunk]) -> None:
+def print_counts(
+    pages: list[tuple[int, str]], chunks: list[Chunk], stats: ChunkStats
+) -> None:
     lengths = [len(c.text) for c in chunks]
     print(f"Pages used: {len(pages)} ({pages[0][0]}-{pages[-1][0]})")
     print(f"Chunks: {len(chunks)}")
@@ -63,6 +72,9 @@ def print_counts(pages: list[tuple[int, str]], chunks: list[Chunk]) -> None:
         f"{statistics.median(lengths):g} / {max(lengths)}"
     )
     print(f"Empty heading: {sum(1 for c in chunks if not c.heading)}")
+    print(f"Introduction blocks dropped: {stats.intro_blocks_dropped}")
+    print(f"Label-only chunks dropped: {stats.label_only_dropped}")
+    print(f"Multi-example chunks split: {stats.example_splits}")
 
 
 def write_preview(path: Path, chunks: list[Chunk]) -> None:
@@ -83,7 +95,7 @@ def main() -> None:
     args = parser.parse_args()
 
     pages = load_lesson_pages(args.pages_file)
-    chunks = chunk_pages(pages)
+    chunks, stats = chunk_pages_with_stats(pages)
     args.db.unlink(missing_ok=True)
     conn = create_db(args.db)
     insert_chunks(conn, chunks)
@@ -92,7 +104,7 @@ def main() -> None:
     if args.preview is not None:
         write_preview(args.preview, chunks)
         print(f"Wrote {args.preview}")
-    print_counts(pages, chunks)
+    print_counts(pages, chunks, stats)
 
 
 if __name__ == "__main__":

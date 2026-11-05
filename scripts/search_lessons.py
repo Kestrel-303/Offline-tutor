@@ -5,10 +5,14 @@ Usage: python scripts/search_lessons.py "query"
 
 import sqlite3
 import sys
+from pathlib import Path
 
-from build_lessons_db import DB_PATH
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
 
-from offline_tutor.lesson_db import search
+from build_lessons_db import DB_PATH  # noqa: E402
+
+from offline_tutor.lesson_db import search  # noqa: E402
 
 
 def main() -> None:

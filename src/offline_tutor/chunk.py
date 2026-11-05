@@ -13,17 +13,29 @@ Pipeline (each step is a small helper below):
    TARGET_MIN..TARGET_MAX characters, never above HARD_MAX. Cuts happen only
    between lines; an oversized paragraph is cut after a line that ends a
    sentence. A worked example of at most HARD_MAX characters stays whole.
-4. merge_tiny: a chunk under MIN_CHARS is merged into the previous chunk of
+4. drop_label_only: a chunk under LABEL_ONLY_MAX characters whose lines are
+   all headings or labels has no body and is dropped.
+5. merge_tiny: a chunk under MIN_CHARS is merged into the previous chunk of
    the same section and kind when the result stays within HARD_MAX.
+6. split_examples: a chunk holding two or more example labels is split at
+   each label.
+
+Text before the first numbered section heading (the unit introduction) is
+dropped in step 2. Example and exercise chunks carry their context in the
+heading: "3.2.2 Title > Example 1", or "3.1 Section title > Example 1" when
+no subsection heading has been seen in the section.
 """
 
 import re
 from dataclasses import dataclass
+from itertools import pairwise
 
 TARGET_MIN = 600
 TARGET_MAX = 1000
 HARD_MAX = 1500
 MIN_CHARS = 200
+LABEL_ONLY_MAX = 100
+HEADING_SEP = " > "
 
 # "3.2 Title" / "3.2.1 Title". The title must start with a letter, so a line
 # like "100.00. Find ..." is not a heading. Long lines are prose, not headings.
@@ -49,6 +61,8 @@ LABEL_KINDS = {
     "Key Terms": "summary",
 }
 DEFAULT_KIND = "explanation"
+# Label kinds whose heading carries the section/subsection context.
+CONTEXT_KINDS = {"example", "exercise"}
 
 # A page with this many distinct level-2 headings is a contents list.
 _CONTENTS_MIN_HEADINGS = 3
@@ -78,6 +92,14 @@ class _Block:
     kind: str
     lines: list[Line]
     head_count: int = 0
+    subsection: str = ""  # "3.2.1 Title" of the nearest subsection, if any
+
+
+@dataclass
+class ChunkStats:
+    intro_blocks_dropped: int = 0
+    label_only_dropped: int = 0
+    example_splits: int = 0
 
 
 def match_heading(line: str) -> tuple[str, str] | None:
@@ -136,7 +158,8 @@ def split_blocks(lines: list[Line]) -> list[_Block]:
     A level-2 heading sets section and section_title; a level-3 heading or a
     label sets heading. Kind comes from the label (see LABEL_KINDS) and is
     "explanation" after a heading. Text before the first heading gets an
-    empty section.
+    empty section. Example and exercise labels get a context heading (see
+    the module docstring).
     """
     blocks = [_Block("", "", "", DEFAULT_KIND, [])]
     i = 0
@@ -150,18 +173,24 @@ def split_blocks(lines: list[Line]) -> list[_Block]:
             continue
         prev = blocks[-1]
         section, title, heading, used = prev.section, prev.section_title, "", 1
+        subsection = prev.subsection
         if h:
             full, used = _join_title(lines, i, h[1])
             if h[0].count(".") == 1:
-                section, title = h[0], full
+                section, title, subsection = h[0], full, ""
             else:
-                heading = f"{h[0]} {full}"
+                heading = subsection = f"{h[0]} {full}"
             kind = DEFAULT_KIND
         else:
             heading = text.rstrip(":").strip()
+            if kind in CONTEXT_KINDS:
+                context = subsection or f"{section} {title}".strip()
+                if context:
+                    heading = f"{context}{HEADING_SEP}{heading}"
         assert kind is not None
-        blocks.append(_Block(section, title, heading, kind, lines[i : i + used]))
-        blocks[-1].head_count = used
+        blocks.append(
+            _Block(section, title, heading, kind, lines[i : i + used], used, subsection)
+        )
         i += used
     return _fold_empty(blocks)
 
@@ -282,6 +311,64 @@ def pack_block(block: _Block) -> list[Chunk]:
     return chunks
 
 
+def _is_heading_or_label(line: str) -> bool:
+    return match_heading(line) is not None or classify_label(line) is not None
+
+
+def drop_label_only(chunks: list[Chunk]) -> tuple[list[Chunk], int]:
+    """Drop chunks under LABEL_ONLY_MAX chars whose non-blank lines are all
+    headings or labels. Returns (kept chunks, number dropped)."""
+    kept = [
+        c
+        for c in chunks
+        if len(c.text) >= LABEL_ONLY_MAX
+        or not all(_is_heading_or_label(t) for t in c.text.split("\n") if t)
+    ]
+    return kept, len(chunks) - len(kept)
+
+
+def split_examples(chunks: list[Chunk]) -> tuple[list[Chunk], int]:
+    """Split each chunk holding two or more example label lines at every
+    label. Text before the first label stays with the first piece. A piece
+    over HARD_MAX is cut further between lines (see split_paragraph).
+
+    Pieces keep the parent's page range (line pages are not tracked after
+    packing), and their heading context with the new label. Returns (chunks,
+    number of chunks split).
+    """
+    out: list[Chunk] = []
+    split = 0
+    for c in chunks:
+        lines = c.text.split("\n")
+        starts = [i for i, t in enumerate(lines) if classify_label(t) == "example"]
+        if len(starts) < 2:
+            out.append(c)
+            continue
+        split += 1
+        context = c.heading.rpartition(HEADING_SEP)[0]
+        bounds = [0, *starts[1:], len(lines)]
+        for a, b in pairwise(bounds):
+            label = lines[max(a, starts[0])].rstrip(":").strip()
+            heading = f"{context}{HEADING_SEP}{label}" if context else label
+            body = [(c.page_start, t) for t in lines[a:b]]
+            while body and not body[-1][1]:
+                body.pop()
+            for piece in split_paragraph(body) if _size(body) > HARD_MAX else [body]:
+                text = "\n".join(t for _, t in piece)
+                out.append(
+                    Chunk(
+                        c.section,
+                        c.section_title,
+                        heading,
+                        "example",
+                        c.page_start,
+                        c.page_end,
+                        text,
+                    )
+                )
+    return out, split
+
+
 def merge_tiny(chunks: list[Chunk]) -> list[Chunk]:
     """Merge chunks under MIN_CHARS into the previous same-section, same-kind
     chunk when the merged text stays within HARD_MAX. The merged chunk keeps
@@ -303,7 +390,22 @@ def merge_tiny(chunks: list[Chunk]) -> list[Chunk]:
     return out
 
 
+def chunk_pages_with_stats(
+    pages: list[tuple[int, str]],
+) -> tuple[list[Chunk], ChunkStats]:
+    """Chunk a list of (pdf_page_number, normalized_page_text) and report
+    what was dropped or split (see module docstring)."""
+    stats = ChunkStats()
+    blocks = split_blocks(to_lines(pages))
+    kept = [b for b in blocks if b.section]
+    stats.intro_blocks_dropped = len(blocks) - len(kept)
+    chunks, stats.label_only_dropped = drop_label_only(
+        [c for b in kept for c in pack_block(b)]
+    )
+    chunks, stats.example_splits = split_examples(merge_tiny(chunks))
+    return chunks, stats
+
+
 def chunk_pages(pages: list[tuple[int, str]]) -> list[Chunk]:
     """Chunk a list of (pdf_page_number, normalized_page_text)."""
-    blocks = split_blocks(to_lines(pages))
-    return merge_tiny([c for b in blocks for c in pack_block(b)])
+    return chunk_pages_with_stats(pages)[0]

@@ -3,10 +3,14 @@
 from offline_tutor.chunk import (
     HARD_MAX,
     MIN_CHARS,
+    Chunk,
     chunk_pages,
+    chunk_pages_with_stats,
     classify_label,
+    drop_label_only,
     find_section_pages,
     match_heading,
+    split_examples,
 )
 
 # Non-ASCII test characters, built with chr() so the formatter keeps the
@@ -85,8 +89,8 @@ def test_kind_from_labels() -> None:
     chunks = chunk_pages([(1, text)])
     assert [(c.kind, c.heading) for c in chunks] == [
         ("explanation", ""),
-        ("example", "Example 1"),
-        ("exercise", "Exercise 4.1"),
+        ("example", "4.1 Alpha > Example 1"),
+        ("exercise", "4.1 Alpha > Exercise 4.1"),
         ("summary", "Summary"),
     ]
     assert chunks[1].text.startswith("Example 1\n")
@@ -157,3 +161,92 @@ def test_non_ascii_text_is_kept() -> None:
     text = "4.1 Alpha\n" + _sentences(4) + f"\nZorp {E_ACUTE}quation {LE} 3."
     chunks = chunk_pages([(1, text)])
     assert f"{E_ACUTE}quation {LE}" in chunks[0].text
+
+
+def test_introduction_before_first_section_is_dropped() -> None:
+    pages = [(3, _sentences(8, "intro") + "\n\n4.1 Alpha\n" + _sentences(5))]
+    chunks, stats = chunk_pages_with_stats(pages)
+    assert stats.intro_blocks_dropped == 1
+    assert [c.section for c in chunks] == ["4.1"]
+    assert "intro" not in chunks[0].text
+    assert chunks[0].text.startswith("4.1 Alpha\n")
+
+
+def test_heading_carries_subsection_title() -> None:
+    text = "\n".join(
+        [
+            "4.1 Alpha topic",
+            _sentences(5),
+            "Example 1",
+            _sentences(5, "zorp"),
+            "4.1.2 Zorp by",
+            "tables",
+            _sentences(5),
+            "Example 2",
+            _sentences(5, "zorp"),
+            "Activity 4.3",
+            _sentences(5, "quux"),
+            "4.2 Beta",
+            _sentences(5),
+            "Exercise 4.2",
+            _sentences(5, "quux"),
+        ]
+    )
+    headings = [(c.kind, c.heading) for c in chunk_pages([(1, text)])]
+    assert headings == [
+        ("explanation", ""),
+        ("example", "4.1 Alpha topic > Example 1"),
+        ("explanation", "4.1.2 Zorp by tables"),
+        ("example", "4.1.2 Zorp by tables > Example 2"),
+        ("exercise", "4.1.2 Zorp by tables > Activity 4.3"),
+        ("explanation", ""),
+        ("exercise", "4.2 Beta > Exercise 4.2"),
+    ]
+
+
+def test_tiny_label_only_chunk_is_dropped() -> None:
+    label_only = Chunk("4.1", "A", "Summary", "summary", 1, 1, "Summary\n4.1.1 Zorp")
+    body = Chunk("4.1", "A", "Example 1", "example", 1, 1, "Example 1\nZorp.")
+    kept, dropped = drop_label_only([label_only, body])
+    assert dropped == 1
+    assert kept == [body]
+
+
+def test_label_only_text_of_100_chars_is_kept() -> None:
+    text = "Example 1\n4.1.1 " + "Z" * 84  # exactly 100 chars, all labels
+    assert len(text) == 100
+    c = Chunk("4.1", "Alpha", "", "example", 1, 1, text)
+    assert drop_label_only([c]) == ([c], 0)
+
+
+def test_multi_example_chunk_is_split_at_each_label() -> None:
+    text = "Example 1\nZorp one.\n\nExample 2\nZorp two.\nExample 3:\nZorp three."
+    c = Chunk("4.1", "Alpha", "4.1.1 Zorps > Example 1", "example", 2, 3, text)
+    out, n = split_examples([c])
+    assert n == 1
+    assert [(x.heading, x.text) for x in out] == [
+        ("4.1.1 Zorps > Example 1", "Example 1\nZorp one."),
+        ("4.1.1 Zorps > Example 2", "Example 2\nZorp two."),
+        ("4.1.1 Zorps > Example 3", "Example 3:\nZorp three."),
+    ]
+    assert all((x.page_start, x.page_end) == (2, 3) for x in out)
+
+
+def test_split_example_pieces_stay_within_hard_max() -> None:
+    big = _sentences(40, "zorp")  # about 2000 chars
+    text = f"Example 1\n{big}\nExample 2\nZorp two."
+    out, _ = split_examples([Chunk("4.1", "A", "Example 1", "example", 1, 1, text)])
+    assert len(out) > 2
+    assert all(len(x.text) <= HARD_MAX for x in out)
+    assert out[-1].text == "Example 2\nZorp two."
+    assert out[-1].heading == "Example 2"
+
+
+def test_merged_tiny_examples_end_up_split() -> None:
+    text = "4.1 Alpha\n" + _sentences(5) + "\nExample 1\nZorp.\nExample 2\nQuux."
+    examples = [c for c in chunk_pages([(1, text)]) if c.kind == "example"]
+    assert [c.heading for c in examples] == [
+        "4.1 Alpha > Example 1",
+        "4.1 Alpha > Example 2",
+    ]
+    assert [c.text for c in examples] == ["Example 1\nZorp.", "Example 2\nQuux."]

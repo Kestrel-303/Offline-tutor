@@ -1,26 +1,40 @@
-"""Write all chunks to data/extracted/chunk_preview.txt for manual review.
+"""Write every chunk in data/lessons.db to data/extracted/chunk_preview.txt
+for manual review. Reads the built database, so chunk ids match it; run
+scripts/build_lessons_db.py first.
 
 Prints only the file path and counts, never chunk text.
 """
 
-from build_lessons_db import ROOT, load_lesson_pages
+import sqlite3
+import sys
+from pathlib import Path
 
-from offline_tutor.chunk import chunk_pages
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from build_lessons_db import DB_PATH  # noqa: E402
 
 OUT_PATH = ROOT / "data" / "extracted" / "chunk_preview.txt"
 
 
 def main() -> None:
-    chunks = chunk_pages(load_lesson_pages())
+    if not DB_PATH.exists():
+        sys.exit(f"{DB_PATH} not found; run scripts/build_lessons_db.py first.")
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, section, heading, kind, page_start, page_end, char_count, text"
+        " FROM chunks ORDER BY id"
+    ).fetchall()
+    conn.close()
     with OUT_PATH.open("w", encoding="utf-8") as f:
-        for i, c in enumerate(chunks, start=1):
+        for cid, section, heading, kind, start, end, n, text in rows:
             f.write(
-                f"===== chunk {i} | section {c.section} | heading {c.heading!r}"
-                f" | kind {c.kind} | pages {c.page_start}-{c.page_end}"
-                f" | {len(c.text)} chars =====\n{c.text}\n\n"
+                f"===== chunk {cid} | section {section} | heading {heading!r}"
+                f" | kind {kind} | pages {start}-{end} | {n} chars =====\n"
+                f"{text}\n\n"
             )
-    print(f"Wrote {OUT_PATH}")
-    print(f"Chunks: {len(chunks)}")
+    print(f"Wrote {OUT_PATH} from {DB_PATH}")
+    print(f"Chunks: {len(rows)}")
 
 
 if __name__ == "__main__":

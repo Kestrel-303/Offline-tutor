@@ -20,6 +20,8 @@ MINUS = chr(0x2212)
 LQ = chr(0x201C)
 RQ = chr(0x201D)
 
+ALL_KINDS = ["explanation", "example", "exercise"]
+
 
 def _chunk(text: str, kind: str = "explanation", heading: str = "") -> Chunk:
     return Chunk("4.1", "Blah topic", heading, kind, 1, 1, text)
@@ -51,7 +53,7 @@ def test_chunks_table_and_char_count(conn: sqlite3.Connection) -> None:
 
 
 def test_ranking_and_relevance(conn: sqlite3.Connection) -> None:
-    results = search(conn, "zorp equation")
+    results = search(conn, "zorp equation", kinds=ALL_KINDS)
     assert results[0].chunk_id == 2  # most occurrences
     assert {r.chunk_id for r in results} == {2, 3, 4}
     for r in results:
@@ -61,12 +63,12 @@ def test_ranking_and_relevance(conn: sqlite3.Connection) -> None:
 
 
 def test_porter_stemming(conn: sqlite3.Connection) -> None:
-    assert {2, 3, 4} <= {r.chunk_id for r in search(conn, "equations")}
+    assert {2, 3, 4} <= {r.chunk_id for r in search(conn, "equations", kinds=ALL_KINDS)}
     assert 3 in {r.chunk_id for r in search(conn, "flarg")}
 
 
 def test_heading_is_indexed(conn: sqlite3.Connection) -> None:
-    assert search(conn, "exercise")[0].chunk_id == 4
+    assert search(conn, "exercise", kinds=["exercise"])[0].chunk_id == 4
 
 
 def test_ties_broken_by_id(conn: sqlite3.Connection) -> None:
@@ -80,6 +82,17 @@ def test_deterministic(conn: sqlite3.Connection) -> None:
 def test_kinds_filter(conn: sqlite3.Connection) -> None:
     assert [r.chunk_id for r in search(conn, "zorp", kinds=["example"])] == [3]
     assert search(conn, "zorp", kinds=[]) == []
+
+
+def test_exercise_excluded_by_default(conn: sqlite3.Connection) -> None:
+    assert {r.chunk_id for r in search(conn, "zorp equation")} == {2, 3}
+    assert search(conn, "practice") == []
+
+
+def test_exercise_included_on_request(conn: sqlite3.Connection) -> None:
+    assert [r.chunk_id for r in search(conn, "practice", kinds=["exercise"])] == [4]
+    ids = {r.chunk_id for r in search(conn, "zorp equation", kinds=ALL_KINDS)}
+    assert 4 in ids
 
 
 def test_limit(conn: sqlite3.Connection) -> None:

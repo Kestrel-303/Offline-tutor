@@ -14,6 +14,7 @@ from offline_tutor.layout import (
     layout_page,
     reading_order,
     stack_fractions,
+    wide_gap_lines,
 )
 
 
@@ -187,3 +188,16 @@ def test_empty_input() -> None:
     assert stack_fractions([], [Bar(0, 5, 10)])[2].ambiguous == 0
     assert group_table_rows([]) == ([], [])
     assert reading_order([]) == []
+
+
+def test_wide_gap_line_is_reported() -> None:
+    tokens = [big("Left column zorp", 0, 120), big("Right column quux", 170, 290)]
+    lines = wide_gap_lines(tokens, [], 40.0)
+    assert [line.text for line in lines] == ["Left column zorp Right column quux"]
+    assert wide_gap_lines(tokens, [], 50.0) == []  # gap is exactly 50
+
+
+def test_wide_gap_skips_table_rows_and_fraction_gaps() -> None:
+    table = [big(c, x, x + 10, base=200) for c, x in [("a", 0), ("b", 60), ("c", 120)]]
+    frac = [big("x =", 0, 20), num("1", 70, 75), den("2", 70, 75)]
+    assert wide_gap_lines(table + frac, [Bar(70, 76, 96)], 40.0) == []

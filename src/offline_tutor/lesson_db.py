@@ -21,6 +21,10 @@ STOPWORDS = frozenset(
     {"the", "a", "an", "is", "of", "to", "how", "do", "i", "me", "what", "can", "you"}
 )
 
+# Kinds left out of search() unless the caller passes kinds explicitly:
+# exercises are practice questions without worked answers.
+DEFAULT_EXCLUDED_KINDS = ("exercise",)
+
 _SCHEMA = """
 CREATE TABLE chunks (
     id INTEGER PRIMARY KEY,
@@ -108,8 +112,9 @@ def search(
 ) -> list[SearchResult]:
     """Return up to limit chunks ordered by bm25 (best first), ties by id.
 
-    kinds, if given, restricts results to those chunk kinds. Returns [] for
-    empty or unmatchable queries.
+    kinds, if given, restricts results to those chunk kinds; by default every
+    kind except DEFAULT_EXCLUDED_KINDS is searched. Returns [] for empty or
+    unmatchable queries.
     """
     query = build_match_query(user_text)
     if query is None:
@@ -121,8 +126,12 @@ def search(
         " WHERE chunks_fts MATCH ?"
     )
     params: list[object] = [query]
-    kind_list = list(kinds) if kinds is not None else None
-    if kind_list is not None:
+    if kinds is None:
+        excluded = list(DEFAULT_EXCLUDED_KINDS)
+        sql += f" AND c.kind NOT IN ({', '.join('?' * len(excluded))})"
+        params.extend(excluded)
+    else:
+        kind_list = list(kinds)
         if not kind_list:
             return []
         sql += f" AND c.kind IN ({', '.join('?' * len(kind_list))})"

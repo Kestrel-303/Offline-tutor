@@ -201,18 +201,48 @@ def group_table_rows(
     return table, rest
 
 
-def reading_order(tokens: list[Token]) -> list[TextLine]:
-    """Group tokens into lines by vertical centre, then order each by x."""
+def _group_lines(tokens: list[Token]) -> list[list[Token]]:
+    """Group tokens into lines by vertical centre (tokens in centre order)."""
     lines: list[list[Token]] = []
     for t in sorted(tokens, key=lambda t: (t.center_y, t.x0)):
         if lines and abs(lines[-1][0].center_y - t.center_y) <= LINE_CENTER_TOL:
             lines[-1].append(t)
         else:
             lines.append([t])
+    return lines
+
+
+def reading_order(tokens: list[Token]) -> list[TextLine]:
+    """Group tokens into lines by vertical centre, then order each by x."""
     out: list[TextLine] = []
-    for line in lines:
+    for line in _group_lines(tokens):
         cells = sorted(line, key=lambda t: t.x0)
         out.append(TextLine(line[0].y1, cells[0].x0, " ".join(c.text for c in cells)))
+    return out
+
+
+def wide_gap_lines(
+    tokens: list[Token], bars: list[Bar], min_gap: float
+) -> list[TextLine]:
+    """Measurement only: lines with a horizontal gap above min_gap between
+    two neighbouring tokens, a possible sign of two columns read as one.
+
+    Uses the same steps as layout_page. Table rows are left out, and a gap
+    next to a merged fraction token does not count.
+    """
+    rest, fractions, _ = stack_fractions(join_runs(tokens), bars)
+    _, rest = group_table_rows(rest, fractions)
+    frac_ids = {id(f) for f in fractions}
+    out: list[TextLine] = []
+    for line in _group_lines(rest + fractions):
+        cells = sorted(line, key=lambda t: t.x0)
+        if any(
+            id(a) not in frac_ids and id(b) not in frac_ids and b.x0 - a.x1 > min_gap
+            for a, b in pairwise(cells)
+        ):
+            out.append(
+                TextLine(line[0].y1, cells[0].x0, " ".join(c.text for c in cells))
+            )
     return out
 
 
