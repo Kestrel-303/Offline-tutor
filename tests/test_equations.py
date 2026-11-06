@@ -152,9 +152,39 @@ def test_extract(text: str, expected: list[str]) -> None:
 
 
 def test_interpreted_shows_fraction_reading() -> None:
-    assert solve_linear("4/5 x +5=23").interpreted == "(4/5)*x + 5 = 23"
-    assert solve_linear("4/5x+5=23").interpreted == "(4/5)*x + 5 = 23"
-    assert solve_linear("2(x+3)=14").interpreted == "2*(x + 3) = 14"
+    assert solve_linear("4/5 x +5=23").interpreted == "(4/5)x + 5 = 23"
+    assert solve_linear("4/5x+5=23").interpreted == "(4/5)x + 5 = 23"
+    assert solve_linear("2(x+3)=14").interpreted == "2(x + 3) = 14"
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        ("How do I solve 3x + 5 = 20?", "3x + 5 = 20"),
+        ("2a + 3 =4a - 7 find a", "2a + 3 = 4a - 7"),
+        ("4/5 x +5=23", "(4/5)x + 5 = 23"),
+        ("-2a = -10", "-2a = -10"),
+        ("Solve x/3 + 2 = 5", "x/3 + 2 = 5"),
+    ],
+)
+def test_interpreted_is_textbook_style(text: str, shown: str) -> None:
+    sol = solve_linear(text)
+    assert sol.interpreted == shown
+    for step in sol.steps:
+        assert "*" not in step
+
+
+def test_parser_still_gets_explicit_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+    real = equations.parse_expr
+
+    def spy(s: str, *args: Any, **kwargs: Any) -> Any:
+        seen.append(s)
+        return real(s, *args, **kwargs)
+
+    monkeypatch.setattr(equations, "parse_expr", spy)
+    solve_linear("4/5 x +5=23")
+    assert "(4/5)*x + 5" in seen
 
 
 # --- Steps --------------------------------------------------------------------

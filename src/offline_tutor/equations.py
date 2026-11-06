@@ -11,8 +11,12 @@ mapped to a Symbol and an empty builtins table.
 
 Reading of fractions: "4/5 x" and "4/5x" are both read as (4/5)*x, never as
 4/(5*x). A number fraction directly followed by an implied multiplication is
-wrapped in brackets in `interpreted` (for example "(4/5)*x + 5 = 23") so the
-tutor can echo the reading back to the student.
+wrapped in brackets (for example "(4/5)*x + 5 = 23") so the tutor can echo
+the reading back to the student.
+
+Display: `interpreted` and the steps show implicit multiplication the way a
+textbook does ("(4/5)x + 5 = 23", "2(x + 3) = 14"). The explicit string with
+"*" is kept internally and is the only thing that reaches the parser.
 """
 
 import math
@@ -210,6 +214,14 @@ def _explicit(equation: str) -> tuple[str, bool, tuple[str, ...]]:
     return text, has_brackets, tuple(decimals)
 
 
+_IMPLICIT_STAR = re.compile(r"(?<=[0-9)])\*(?=[A-Za-z(])")
+
+
+def display(explicit: str) -> str:
+    """Drop "*" between a number or ")" and a letter or "(": "3*x" -> "3x"."""
+    return _IMPLICIT_STAR.sub("", explicit)
+
+
 def _parse_side(side: str) -> sp.Expr:
     if not side.strip():
         raise InvalidInputError("one side of the equation is empty")
@@ -307,9 +319,9 @@ def _term(c: Fraction, v: str) -> str:
     if c == -1:
         return f"-{v}"
     if c.denominator == 1:
-        return f"{c.numerator}*{v}"
+        return f"{c.numerator}{v}"
     sign = "-" if c < 0 else ""
-    return f"{sign}({_num(abs(c))})*{v}"
+    return f"{sign}({_num(abs(c))}){v}"
 
 
 def _linear(a: Fraction, b: Fraction, v: str) -> str:
@@ -432,14 +444,14 @@ def solve_linear(text: str) -> Solution:
         steps = _build_steps(p, var, None)
         if outcome == "identity":
             steps.append(
-                f"Check: both sides simplify to {sp.sstr(sp.expand(p.lhs))}, "
+                f"Check: both sides simplify to {display(sp.sstr(sp.expand(p.lhs)))}, "
                 f"so they are equal for every value of {v}."
             )
         else:
             steps.append(
                 f"Check: left side minus right side is always {sp.sstr(diff)}, never 0."
             )
-        return Solution(v, p.interpreted, tuple(steps), outcome, None)
+        return Solution(v, display(p.interpreted), tuple(steps), outcome, None)
 
     roots = _solver(diff, var)
     if len(roots) != 1:
@@ -451,13 +463,14 @@ def solve_linear(text: str) -> Solution:
     right = p.rhs.subs(var, answer)
     if not (left.is_Rational and right.is_Rational and left == right):
         raise VerificationError(
-            f"{v} = {answer} does not satisfy {p.interpreted}: {left} != {right}"
+            f"{v} = {answer} does not satisfy {display(p.interpreted)}: "
+            f"{left} != {right}"
         )
     frac = _to_fraction(answer)
     steps = _build_steps(p, var, frac)
     steps.append(
-        f"Check: put {v} = {_num(frac)} into {p.interpreted}. "
+        f"Check: put {v} = {_num(frac)} into {display(p.interpreted)}. "
         f"Left side: {_num(_to_fraction(left))}. "
         f"Right side: {_num(_to_fraction(right))}. Both sides are equal."
     )
-    return Solution(v, p.interpreted, tuple(steps), "unique", answer)
+    return Solution(v, display(p.interpreted), tuple(steps), "unique", answer)
