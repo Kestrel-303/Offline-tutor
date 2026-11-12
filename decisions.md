@@ -191,3 +191,10 @@ Week 1 (Oct 26 - Nov 1) targets NOT met: phone measurements, Termux experiment, 
 7. Write the text normalizer with tests (using made-up strings, never textbook text), then lesson chunks in SQLite (FTS5).
 8. M13 phone measurement and Termux experiment (exact steps to be written in the chat).
  
+- 2026-11-12 environment recorded (requirements-lock.txt, docs/environment.md with sizes and SHA-256 of the PDF and model). Canonical = the original repo: PyMuPDF/pymupdf4llm/pymupdf-layout 2.0, onnxruntime 1.31.0, numpy 2.5.4, pytest 9.1.1, ruff 0.17.1, pyright 1.1.414, sympy 1.14.0, llama-cpp-python 0.3.36 (prebuilt wheel, installed separately). A fresh unpinned install on the friend's PC got PyMuPDF 2.1, onnxruntime 1.31.1, pytest 9.2.0, ruff 0.17.4: real drift. Both environments pass 394 tests and give the same 32 chunks (3.1: 6, 3.2: 26). Friend's duplicate environment commit is to be discarded (reset to origin/main), then his venv rebuilt from the lock file. Model SHA-256 183715C4...2818A5B4 matches Ollama's blob name.
+- PyMuPDF is AGPL (to verify); dev-time only (extract group), never shipped in the app.
+
+- 2026-11-12: both machines verified identical: the pip freeze files hash identically and compare clean (friend's venv rebuilt from requirements-lock.txt). Remaining closure checks: same top commit, same PDF/model hashes, friend's model run.
+- Task split (proposed): Tomas owns router/refusal, terminal tutor, eval runner, existing pipeline code, phone work, teacher session. Friend owns model testing (Q4 llama, fixed seed, token counts, 500-token benchmark), adversarial questions (new file), quiz templates for 3.1. Reviews cross-way. Branches, no direct pushes to main, eval files never edited after a run.
+
+- 2026-11-12 SETUP COMPLETE on both machines: same commit, same lock-file environment (freeze hashes identical), same PDF and model hashes. Friend's llama-cpp-python run (single run, specs not yet recorded): load 2.46 s, first token 1.08 s, 11.16 tokens/s, 108 tokens, correct; builder's run for comparison: 2.11 s, 0.60 s, 13.06 tokens/s. Differences within single-run noise until repeated with specs.
