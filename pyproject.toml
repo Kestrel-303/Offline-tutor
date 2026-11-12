@@ -15,7 +15,7 @@ dependencies = [
 [dependency-groups]
 # PDF text extraction (dev-time content pipeline, not needed by the app).
 extract = [
-    "pymupdf>=1.26",
+    "pymupdf==2.0",
 ]
 dev = [
     "pytest>=9.1",
