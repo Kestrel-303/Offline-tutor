@@ -73,24 +73,26 @@ EQUATION_ACTIONS: dict[Classification, Action] = {
 # title except sections 3.1 and 3.2, tokenized as above (also dropping
 # GENERIC_HEADING_WORDS), stemmed, minus every stem in the lesson vocabulary
 # built from data/lessons.db. Neither file is read at runtime for this set.
+# Removed further, regular, similar, summari because they are ordinary English
+# words, not subject terms (Tomas, 2026-11-17, before any eval).
 OUT_OF_LESSON_TERMS: frozenset[str] = frozenset(
     (
         "applic",
         "congruenc",
         "dimens",
-        "further",
         "inequ",
         "non",
         "polygon",
         "probabl",
-        "regular",
-        "similar",
         "statist",
-        "summari",
         "trigonometri",
         "vector",
     )
 )
+
+# Anchor stems shorter than this ("on" from "one", "us" from "using") are not
+# real subject words and are dropped.
+MIN_ANCHOR_LENGTH = 3
 
 _WORD = re.compile(r"[a-z]+")
 
@@ -143,7 +145,8 @@ def build_lexicon(db_path: str | Path) -> Lexicon:
     """Build the lexicon from lessons.db, opened read-only.
 
     vocabulary: stems of every content word in chunk headings and text.
-    anchors: stems of heading words only, minus GENERIC_HEADING_WORDS.
+    anchors: stems of heading words only, minus GENERIC_HEADING_WORDS and
+    stems shorter than MIN_ANCHOR_LENGTH.
     """
     uri = Path(db_path).resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
@@ -157,6 +160,7 @@ def build_lexicon(db_path: str | Path) -> Lexicon:
     for heading, text in rows:
         vocabulary |= content_stems(heading) | content_stems(text)
         anchors |= content_stems(heading, GENERIC_HEADING_WORDS) - generic_stems
+    anchors = {a for a in anchors if len(a) >= MIN_ANCHOR_LENGTH}
     return Lexicon(frozenset(vocabulary), frozenset(anchors))
 
 

@@ -13,6 +13,7 @@ from offline_tutor.lesson_db import create_db, insert_chunks
 from offline_tutor.router import (
     EQUATION_ACTIONS,
     GENERIC_HEADING_WORDS,
+    MIN_ANCHOR_LENGTH,
     MIN_COVERAGE,
     OUT_OF_LESSON_TERMS,
     REFUSAL_MESSAGE,
@@ -74,6 +75,27 @@ def test_every_engine_label_has_an_action() -> None:
 def test_banned_terms_are_ascii_and_sorted_stems() -> None:
     assert OUT_OF_LESSON_TERMS
     assert all(t.isascii() and t.isalpha() and t.islower() for t in OUT_OF_LESSON_TERMS)
+
+
+def test_banned_terms_exact() -> None:
+    assert OUT_OF_LESSON_TERMS == {
+        "applic",
+        "congruenc",
+        "dimens",
+        "inequ",
+        "non",
+        "polygon",
+        "probabl",
+        "statist",
+        "trigonometri",
+        "vector",
+    }
+
+
+@pytest.mark.parametrize("word", ["further", "regular", "similar", "summary"])
+def test_ordinary_words_not_banned_by_default(word: str, lex: Lexicon) -> None:
+    assert stem(word) not in OUT_OF_LESSON_TERMS
+    assert route(f"solve a {word} linear equation", lex).banned_hits == ()
 
 
 # --- stemming ----------------------------------------------------------------
@@ -259,3 +281,32 @@ def test_build_lexicon_read_only(tmp_path: Path) -> None:
     for generic in ("example", "exercises", "review"):
         assert stem(generic) not in lexicon.anchors
     assert {stem("zorp"), stem("flarging"), stem("practice")} <= lexicon.vocabulary
+
+
+def test_build_lexicon_drops_short_anchors(tmp_path: Path) -> None:
+    assert MIN_ANCHOR_LENGTH == 3
+    db = tmp_path / "lessons.db"
+    conn = create_db(db)
+    insert_chunks(
+        conn,
+        [
+            Chunk(
+                "9.1",
+                "Zorp",
+                "Zorp equations in one variable using tables",
+                "explanation",
+                1,
+                1,
+                "Flarge the zorp.",
+            )
+        ],
+    )
+    conn.close()
+
+    lexicon = build_lexicon(db)
+
+    assert stem("one") == "on" and stem("using") == "us"
+    assert "on" not in lexicon.anchors
+    assert "us" not in lexicon.anchors
+    assert "variabl" in lexicon.anchors
+    assert {"on", "us"} <= lexicon.vocabulary
