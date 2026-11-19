@@ -2,7 +2,7 @@
 
 Project: offline-tutor, an offline AI math tutor for Ethiopian Grade 9 students, built as a college-application portfolio demo. Two builders share the repo:
 - Tomas (repo owner, GitHub: Kestrel-303)
-- Ezana (GitHub: ezanaaregawisudo81)
+- Ezana (GitHub: ezanaaregawi81-sudo)
 
 Each of us must be able to say honestly what he built. The ownership below exists to make that possible and to prevent edit conflicts. This file was committed once directly on main with both of us agreeing; after that, nobody pushes straight to main.
 
