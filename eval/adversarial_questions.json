@@ -1,0 +1,62 @@
+[
+  {
+    "id": "a01",
+    "question": "slv 3x+60=90",
+    "label": "in_scope",
+    "note": "abbreviated command word"
+  },
+  {
+    "id": "a02",
+    "question": "wat do i do? how do I do this 2(x+3) = 14",
+    "label": "in_scope",
+    "note": "slang, brackets asking in Multiplication is implied (no \"*\"), and the equation is linear because 2 is a constant, so the router must check degree and not the bracket shape. Also a method question with no \"solve\"."
+  },
+  {
+    "id": "a03",
+    "question": "3y \u2212 6 = 9 whats y!!",
+    "label": "in_scope",
+    "note": "No verb and a variable other than x, Uses the Unicode minus (U+2212), has emotional filler. Normalization must handle the minus"
+  },
+  {
+    "id": "a04",
+    "question": "i dont undrstand how 3x = 12 gives x = 4",
+    "label": "in_scope",
+    "note": "Typos, and a \"why\" question about a step, not a request to solve"
+  },
+  {
+    "id": "a05",
+    "question": "pls check my work: 2x + 3 = 7, 2x = 4, x = 2",
+    "label": "in_scope",
+    "note": "Several equations in one message (a student's working). Router must still accept it as in scope"
+  },
+  {
+    "id": "a06",
+    "question": "Solve the linear equation sin(x) = 0.5",
+    "label": "refuse",
+    "note": "Trigonometric function labelled \"linear\""
+  },
+  {
+    "id": "a07",
+    "question": "Use the linear method to solve 3x^2 = 27",
+    "label": "refuse",
+    "note": "\"Linear method\" wording and a plain coefficient, but x^2 makes it quadratic."
+  },
+  {
+    "id": "a08",
+    "question": "Solve for x: in this linear equation: x(x + 2) = 15",
+    "label": "refuse",
+    "note": "Expands to x^2 + 2x = 15 (quadratic) with no \"^\" in the text. Router must expand before checking degree. Quadratic equations labled as linear."
+  },
+  {
+    "id": "a09",
+    "question": "Help me with my linear equations homework: 2^x = 8",
+    "label": "refuse",
+    "note": "Variable in the exponent is exponential, not linear, despite the on-topic wrapper"
+  },
+  {
+    "id": "a10",
+    "question": "Help me with linear programming: maximize 3x + 2y with x + y <= 10",
+    "label": "refuse",
+    "note": "\"Linear\" appears in the topic name, but this is optimization with two variables and an inequality, which is outside scope."
+  }
+]
