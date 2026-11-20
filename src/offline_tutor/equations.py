@@ -289,9 +289,31 @@ def _analyze(text: str) -> tuple[Classification, list[_Parsed]]:
     return "linear_other", parsed
 
 
+_FUNCTION = re.compile(r"\b(?:sin|cos|tan|exp|log|ln|sqrt|abs)\s*\(", re.IGNORECASE)
+
+
+def _has_function_of_variable(text: str) -> bool:
+    """True if a function such as sin or sqrt is applied to a letter.
+
+    extract_equations drops words, so "sin(x) = 0.5" would otherwise be read
+    as "(x) = 0.5". "sqrt(2)*x" has no letter inside the brackets and passes.
+    """
+    for m in _FUNCTION.finditer(text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += {"(": 1, ")": -1}.get(text[i], 0)
+            if text[i].isalpha():
+                return True
+            i += 1
+    return False
+
+
 def classify(text: str) -> Classification:
     """Classify a question. Never raises; unsafe input gives "invalid"."""
-    return _analyze(text)[0]
+    kind = _analyze(text)[0]
+    if kind not in ("no_equation", "invalid") and _has_function_of_variable(text):
+        return "nonlinear"
+    return kind
 
 
 def _solver(expr: Any, var: sp.Symbol) -> list[Any]:
