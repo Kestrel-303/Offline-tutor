@@ -289,29 +289,38 @@ def _analyze(text: str) -> tuple[Classification, list[_Parsed]]:
     return "linear_other", parsed
 
 
-_FUNCTION = re.compile(r"\b(?:sin|cos|tan|exp|log|ln|sqrt|abs)\s*\(", re.IGNORECASE)
+_FUNCTION_WORD = re.compile(
+    r"(?<![A-Za-z])(?:sin|cos|tan|cot|sec|csc|exp|log|ln|sqrt|abs)(?![A-Za-z])",
+    re.IGNORECASE,
+)
 
 
-def _has_function_of_variable(text: str) -> bool:
-    """True if a function such as sin or sqrt is applied to a letter.
+def _has_function_call(text: str) -> bool:
+    """True if a word of two or more letters is directly followed by "(".
 
-    extract_equations drops words, so "sin(x) = 0.5" would otherwise be read
-    as "(x) = 0.5". "sqrt(2)*x" has no letter inside the brackets and passes.
+    extract_equations drops words, so "sqrt(2)*x = 4" would otherwise be read
+    as "(2)x = 4". Only calls in the equation count: the math run just before
+    the word, or the run its "(" starts, must contain "=".
     """
-    for m in _FUNCTION.finditer(text):
-        depth, i = 1, m.end()
-        while i < len(text) and depth:
-            depth += {"(": 1, ")": -1}.get(text[i], 0)
-            if text[i].isalpha():
-                return True
-            i += 1
-    return False
+    tokens = _TOKEN.findall(normalize(text))
+    runs = [""]
+    calls: list[int] = []  # index of the run each call's "(" starts
+    for i, tok in enumerate(tokens):
+        if _is_math_token(tok):
+            runs[-1] += tok
+            continue
+        if len(tok) >= 2 and tok.isalpha() and tokens[i + 1 : i + 2] == ["("]:
+            calls.append(len(runs))
+        runs.append("")
+    return any("=" in runs[k - 1] or "=" in runs[k] for k in calls)
 
 
 def classify(text: str) -> Classification:
     """Classify a question. Never raises; unsafe input gives "invalid"."""
     kind = _analyze(text)[0]
-    if kind not in ("no_equation", "invalid") and _has_function_of_variable(text):
+    if kind not in ("no_equation", "invalid") and _has_function_call(text):
+        return "nonlinear"
+    if kind in ("linear_one_var", "linear_other") and _FUNCTION_WORD.search(text):
         return "nonlinear"
     return kind
 
