@@ -3,11 +3,11 @@
 import copy
 
 from offline_tutor.equations import Solution, solve_linear
-from offline_tutor.explain_prompt import Chunk, build_explain_prompt
+from offline_tutor.explain_prompt import PromptChunk, build_explain_prompt
 
 QUESTION = "How do I solve 2x + 3 = 7?"
 
-CHUNKS: list[Chunk] = [
+CHUNKS: list[PromptChunk] = [
     {
         "id": 11,
         "kind": "explanation",

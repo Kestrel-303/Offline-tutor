@@ -10,7 +10,7 @@ from typing import TypedDict
 from offline_tutor.equations import Solution
 
 
-class Chunk(TypedDict):
+class PromptChunk(TypedDict):
     id: int
     kind: str
     text: str
@@ -38,7 +38,7 @@ def _answer_in_words(solution: Solution) -> str:
 
 
 def build_explain_prompt(
-    question: str, solution: Solution, chunks: list[Chunk]
+    question: str, solution: Solution, chunks: list[PromptChunk]
 ) -> list[dict[str, str]]:
     lines = [
         f"Student's question: {question}",
