@@ -315,14 +315,22 @@ def _has_function_call(text: str) -> bool:
     return any("=" in runs[k - 1] or "=" in runs[k] for k in calls)
 
 
-def classify(text: str) -> Classification:
-    """Classify a question. Never raises; unsafe input gives "invalid"."""
-    kind = _analyze(text)[0]
+def _check_functions(text: str, kind: Classification) -> Classification:
+    """Turn an analyzed kind into "nonlinear" if the equation uses a function.
+
+    Parsing drops words, so "sqrt(2)*x = 4" and "sqrt 2 x = 4" would
+    otherwise be read as 2x = 4.
+    """
     if kind not in ("no_equation", "invalid") and _has_function_call(text):
         return "nonlinear"
     if kind in ("linear_one_var", "linear_other") and _FUNCTION_WORD.search(text):
         return "nonlinear"
     return kind
+
+
+def classify(text: str) -> Classification:
+    """Classify a question. Never raises; unsafe input gives "invalid"."""
+    return _check_functions(text, _analyze(text)[0])
 
 
 def _solver(expr: Any, var: sp.Symbol) -> list[Any]:
@@ -456,6 +464,7 @@ def solve_linear(text: str) -> Solution:
     VerificationError if the solver's answer fails the substitution check.
     """
     kind, parsed = _analyze(text)
+    kind = _check_functions(text, kind)
     if kind == "no_equation":
         raise NoEquationError("no equation found")
     if kind == "invalid":
