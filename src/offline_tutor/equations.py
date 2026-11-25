@@ -455,6 +455,10 @@ def solve_linear(text: str) -> Solution:
     (for systems, nonlinear and multi-variable equations) or
     VerificationError if the solver's answer fails the substitution check.
     """
+    # Checked on the raw text: parsing drops the word, so "sqrt(2)*x = 4"
+    # would be solved as 2x = 4.
+    if _has_function_call(text):
+        raise UnsupportedEquationError("nonlinear")
     kind, parsed = _analyze(text)
     if kind == "no_equation":
         raise NoEquationError("no equation found")
