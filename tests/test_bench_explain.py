@@ -14,15 +14,15 @@ from pathlib import Path
 import pytest
 from bench_explain import (
     QUESTION,
-    WORKED_SOLUTION,
     BenchSettings,
     Message,
-    fallback_build_explain_prompt,
     main,
     quant_warning,
     select_chunks,
 )
 
+from offline_tutor.equations import solve_linear
+from offline_tutor.explain_prompt import PromptChunk, build_explain_prompt
 from offline_tutor.lesson_db import create_db
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
@@ -69,12 +69,13 @@ class Factory:
 
 def base_tokens() -> int:
     """Fake-token count of the prompt with no lesson chunks."""
-    messages = fallback_build_explain_prompt(QUESTION, WORKED_SOLUTION, [])
+    messages = build_explain_prompt(QUESTION, solve_linear(QUESTION), [])
     return FakeModel().count_prompt_tokens(messages)
 
 
-def fake_chunks(n: int, words: int) -> list[tuple[int, str]]:
-    return [(i + 1, " ".join([MARKER] * words)) for i in range(n)]
+def fake_chunks(n: int, words: int) -> list[PromptChunk]:
+    text = " ".join([MARKER] * words)
+    return [{"id": i + 1, "kind": "explanation", "text": text} for i in range(n)]
 
 
 def make_db(path: Path, words: int = 100) -> Path:
@@ -131,7 +132,7 @@ def test_import_does_not_import_llama_cpp() -> None:
 def test_chunk_selection_stops_within_tolerance() -> None:
     base = base_tokens()
     sel = select_chunks(
-        FakeModel(), fallback_build_explain_prompt, fake_chunks(6, 100), base + 300, 50
+        FakeModel(), build_explain_prompt, fake_chunks(6, 100), base + 300, 50
     )
     assert sel.target_reached
     assert sel.chunk_ids == [1, 2, 3]
@@ -140,19 +141,20 @@ def test_chunk_selection_stops_within_tolerance() -> None:
 
 def test_unreachable_target_is_recorded_not_padded() -> None:
     base = base_tokens()
-    sel = select_chunks(
-        FakeModel(), fallback_build_explain_prompt, fake_chunks(2, 100), base + 1000, 50
-    )
+    chunks = fake_chunks(2, 100)
+    sel = select_chunks(FakeModel(), build_explain_prompt, chunks, base + 1000, 50)
     assert not sel.target_reached
     assert sel.chunk_ids == [1, 2]
-    assert sel.prompt_tokens == base + 200  # exactly the real chunks, no filler
+    # Exactly the real chunks, no filler.
+    full = build_explain_prompt(QUESTION, solve_linear(QUESTION), chunks)
+    assert sel.prompt_tokens == FakeModel().count_prompt_tokens(full)
     assert "not reachable" in sel.note
 
 
 def test_overshooting_target_is_recorded() -> None:
     base = base_tokens()
     sel = select_chunks(
-        FakeModel(), fallback_build_explain_prompt, fake_chunks(2, 500), base + 100, 50
+        FakeModel(), build_explain_prompt, fake_chunks(2, 500), base + 100, 50
     )
     assert not sel.target_reached
     assert sel.chunk_ids == [1]

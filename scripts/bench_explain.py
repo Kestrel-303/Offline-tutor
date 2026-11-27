@@ -36,10 +36,19 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from offline_tutor.equations import Solution, solve_linear  # noqa: E402
+from offline_tutor.explain_prompt import (  # noqa: E402
+    PromptChunk,
+    build_explain_prompt,
+)
 
 Message = dict[str, str]
-PromptBuilder = Callable[[str, str, Sequence[str]], list[Message]]
+PromptBuilder = Callable[[str, Solution, list[PromptChunk]], list[Message]]
 
 SECTION = "3.1"
 CHUNK_KINDS = ("explanation", "example")
@@ -123,31 +132,24 @@ def fallback_build_explain_prompt(
 
 
 def resolve_prompt_builder() -> tuple[PromptBuilder, str]:
-    """Return (builder, source name); the real one if it exists."""
-    try:
-        module = importlib.import_module("offline_tutor.explain_prompt")
-    except ImportError:
-        return fallback_build_explain_prompt, "local fallback (temporary stand-in)"
-    builder = getattr(module, "build_explain_prompt", None)
-    if builder is None:
-        return fallback_build_explain_prompt, "local fallback (temporary stand-in)"
-    return cast(PromptBuilder, builder), "offline_tutor.explain_prompt"
+    """Return (builder, source name): always the real builder."""
+    return build_explain_prompt, "offline_tutor.explain_prompt"
 
 
-def load_section_chunks(db_path: str | Path) -> list[tuple[int, str]]:
-    """Read (id, text) of section 3.1 explanation/example chunks, read-only."""
+def load_section_chunks(db_path: str | Path) -> list[PromptChunk]:
+    """Read id, kind, text of section 3.1 explanation/example chunks, read-only."""
     uri = Path(db_path).resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     try:
         placeholders = ", ".join("?" * len(CHUNK_KINDS))
         rows = conn.execute(
-            "SELECT id, text FROM chunks WHERE section = ?"
+            "SELECT id, kind, text FROM chunks WHERE section = ?"
             f" AND kind IN ({placeholders}) ORDER BY id",
             (SECTION, *CHUNK_KINDS),
         ).fetchall()
     finally:
         conn.close()
-    return [(int(r[0]), str(r[1])) for r in rows]
+    return [{"id": int(r[0]), "kind": str(r[1]), "text": str(r[2])} for r in rows]
 
 
 @dataclass
@@ -162,7 +164,7 @@ class ChunkSelection:
 def select_chunks(
     model: BenchModel,
     builder: PromptBuilder,
-    chunks: Sequence[tuple[int, str]],
+    chunks: Sequence[PromptChunk],
     target: int,
     tolerance: int,
 ) -> ChunkSelection:
@@ -174,14 +176,13 @@ def select_chunks(
     """
     if not chunks:
         raise ValueError(f"no {'/'.join(CHUNK_KINDS)} chunks in section {SECTION}")
+    solution = solve_linear(QUESTION)  # SymPy-verified; raises if unsolvable
     best: ChunkSelection | None = None
     for k in range(1, len(chunks) + 1):
-        used = chunks[:k]
-        messages = builder(QUESTION, WORKED_SOLUTION, [text for _, text in used])
+        used = list(chunks[:k])
+        messages = builder(QUESTION, solution, used)
         tokens = model.count_prompt_tokens(messages)
-        candidate = ChunkSelection(
-            [cid for cid, _ in used], messages, tokens, False, ""
-        )
+        candidate = ChunkSelection([c["id"] for c in used], messages, tokens, False, "")
         if best is None or abs(tokens - target) < abs(best.prompt_tokens - target):
             best = candidate
         if abs(tokens - target) <= tolerance:
@@ -397,7 +398,7 @@ def bench_model(
     path: str,
     factory: ModelFactory,
     settings: BenchSettings,
-    chunks: Sequence[tuple[int, str]],
+    chunks: Sequence[PromptChunk],
     builder: PromptBuilder,
 ) -> dict[str, Any]:
     _, available_before = ram_bytes()
