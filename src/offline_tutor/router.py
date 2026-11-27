@@ -4,7 +4,8 @@ route() returns one of three routes:
 
 - solve_equation: the question contains a linear equation in one variable
   that the equation engine can solve.
-- explain_lesson: the question's words fit the lesson vocabulary.
+- explain_lesson: the question is a typed system of linear equations, or
+  its words fit the lesson vocabulary.
 - refuse: anything else. The caller shows REFUSAL_MESSAGE and never calls
   the language model.
 
@@ -26,17 +27,28 @@ from offline_tutor.equations import Classification, classify
 
 Route = Literal["solve_equation", "explain_lesson", "refuse"]
 Reason = Literal[
+    "inequality_sign",
     "equation_detected",
     "nonlinear_equation",
+    "typed_system",
     "no_content_words",
     "out_of_lesson_term",
     "no_anchor_term",
     "low_coverage",
     "lesson_match",
 ]
-Action = Literal["solve", "refuse", "continue"]
+Action = Literal["solve", "explain", "refuse", "continue"]
 
 REFUSAL_MESSAGE = "I can't help with that"
+
+# < or > (but not the arrows -> and =>), or the unicode signs <= and >=.
+# Checked before the equation step (2026-11-27 error log).
+INEQUALITY_SIGN = re.compile("[<\u2264\u2265]|(?<![-=])>")
+
+# Anchor typo tolerance (2026-11-27 error log). An anchor stem also matches a
+# question stem that starts with it, or one at edit distance 1 when both are
+# at least this long. Applies to the anchor check only.
+TYPO_MIN_LENGTH = 5
 
 # First guess, chosen before seeing any result. Not measured.
 MIN_COVERAGE = 0.6
@@ -58,12 +70,14 @@ GENERIC_HEADING_WORDS = frozenset(
 )
 
 # Engine classification -> action. Only a linear equation in one variable is
-# solvable by the engine. Systems, multi-variable equations, no equation and
-# unreadable input continue to the word rules.
+# solvable by the engine. A typed system of linear equations goes to
+# explain_lesson after the banned-term check only (2026-11-27 error log).
+# Multi-variable equations, no equation and unreadable input continue to the
+# word rules.
 EQUATION_ACTIONS: dict[Classification, Action] = {
     "linear_one_var": "solve",
     "nonlinear": "refuse",
-    "system": "continue",
+    "system": "explain",
     "linear_other": "continue",
     "no_equation": "continue",
     "invalid": "continue",
@@ -135,6 +149,34 @@ def content_stems(text: str, extra_stopwords: frozenset[str] = frozenset()) -> s
     return {stem(w) for w in content_words(text, extra_stopwords)}
 
 
+def edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance: insertions, deletions and substitutions."""
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def anchor_matches(token: str, anchors: frozenset[str]) -> tuple[str, ...]:
+    """Anchors that the stem token counts as, typos included (sorted)."""
+    return tuple(
+        sorted(
+            a
+            for a in anchors
+            if token == a
+            or token.startswith(a)
+            or (
+                len(token) >= TYPO_MIN_LENGTH
+                and len(a) >= TYPO_MIN_LENGTH
+                and edit_distance(token, a) == 1
+            )
+        )
+    )
+
+
 @dataclass(frozen=True)
 class Lexicon:
     vocabulary: frozenset[str]
@@ -180,6 +222,8 @@ def route(
     question: str, lexicon: Lexicon, banned: frozenset[str] = OUT_OF_LESSON_TERMS
 ) -> RouteDecision:
     """Route a question. Deterministic; never calls a language model."""
+    if INEQUALITY_SIGN.search(question):
+        return RouteDecision("refuse", "inequality_sign")
     label = classify(question)  # never raises
     action = EQUATION_ACTIONS.get(label, "continue")
     if action == "solve":
@@ -191,13 +235,17 @@ def route(
 
     content = content_stems(question)
     if not content:
+        if action == "explain":
+            return RouteDecision("explain_lesson", "typed_system", equation_label=label)
         return RouteDecision("refuse", "no_content_words", equation_label=label)
 
     matched = tuple(sorted(content & lexicon.vocabulary))
     unmatched = tuple(sorted(content - lexicon.vocabulary))
     coverage = len(matched) / len(content)
     banned_hits = tuple(sorted(content & banned))
-    anchor_hits = tuple(sorted(content & lexicon.anchors))
+    anchor_hits = tuple(
+        sorted({a for t in content for a in anchor_matches(t, lexicon.anchors)})
+    )
 
     def decide(r: Route, reason: Reason) -> RouteDecision:
         return RouteDecision(
@@ -206,6 +254,9 @@ def route(
 
     if banned_hits:
         return decide("refuse", "out_of_lesson_term")
+    # A typed system skips the anchor and coverage rules.
+    if action == "explain":
+        return decide("explain_lesson", "typed_system")
     if not anchor_hits:
         return decide("refuse", "no_anchor_term")
     if coverage < MIN_COVERAGE:
