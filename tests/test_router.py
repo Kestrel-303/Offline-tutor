@@ -18,10 +18,13 @@ from offline_tutor.router import (
     OUT_OF_LESSON_TERMS,
     REFUSAL_MESSAGE,
     STOPWORDS,
+    TYPO_MIN_LENGTH,
     Lexicon,
+    anchor_matches,
     build_lexicon,
     content_stems,
     content_words,
+    edit_distance,
     route,
     stem,
 )
@@ -310,3 +313,117 @@ def test_build_lexicon_drops_short_anchors(tmp_path: Path) -> None:
     assert "us" not in lexicon.anchors
     assert "variabl" in lexicon.anchors
     assert {"on", "us"} <= lexicon.vocabulary
+
+
+# --- typed systems -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("question", ["x + y = 5, x - y = 1", "2x + y = 4; x = 1 + y"])
+def test_typed_system_explains_without_words(question: str) -> None:
+    d = route(question, EMPTY)
+    assert (d.route, d.reason) == ("explain_lesson", "typed_system")
+    assert d.equation_label == "system"
+    assert d.coverage is None
+
+
+def test_typed_system_with_banned_term_refused() -> None:
+    term = next(t for t in sorted(OUT_OF_LESSON_TERMS) if stem(t) == t)
+    d = route(f"{term} x + y = 5, x - y = 1", EMPTY)
+    assert (d.route, d.reason) == ("refuse", "out_of_lesson_term")
+    assert d.banned_hits == (term,)
+    assert d.equation_label == "system"
+
+
+def test_typed_system_with_only_stopwords() -> None:
+    d = route("what is x + y = 5 and x - y = 1", EMPTY)
+    assert (d.route, d.reason) == ("explain_lesson", "typed_system")
+
+
+def test_plain_typed_system() -> None:
+    d = route("x + y = 5, x - y = 1", EMPTY)
+    assert (d.route, d.reason) == ("explain_lesson", "typed_system")
+
+
+def test_system_with_nonlinear_equation_refused(lex: Lexicon) -> None:
+    d = route("solve x^2 + y = 5, x - y = 1", lex)
+    assert (d.route, d.reason) == ("refuse", "nonlinear_equation")
+
+
+def test_single_linear_equation_still_solved() -> None:
+    d = route("solve 3k - 2 = 7", EMPTY)
+    assert (d.route, d.reason) == ("solve_equation", "equation_detected")
+
+
+# --- inequality signs --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["Solve 5x < 20", "5x > 20", "x \u2265 3", "2x \u2264 8", "x >= 1", "x <= 1"],
+)
+def test_inequality_sign_refused(question: str, lex: Lexicon) -> None:
+    d = route(question, lex)
+    assert (d.route, d.reason) == ("refuse", "inequality_sign")
+
+
+@pytest.mark.parametrize("question", ["equation -> steps", "linear equation => solve"])
+def test_arrows_are_not_inequalities(question: str, lex: Lexicon) -> None:
+    assert route(question, lex).reason != "inequality_sign"
+
+
+# --- anchor typos ------------------------------------------------------------
+
+
+def test_edit_distance() -> None:
+    assert edit_distance("linaar", "linear") == 1  # substitution
+    assert edit_distance("varibl", "variabl") == 1  # deletion
+    assert edit_distance("variabl", "varibl") == 1  # insertion
+    assert edit_distance("linaer", "linear") == 2  # transposition
+    assert edit_distance("", "abc") == 3
+    assert edit_distance("same", "same") == 0
+
+
+@pytest.fixture
+def elim_lex() -> Lexicon:
+    return _lexicon(
+        "Add the two equations to eliminate one variable, then solve.",
+        "Elimination method for linear equations in two variables",
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "anchor"),
+    [
+        ("explain eliminashun", "elimin"),  # prefix
+        ("solve linaar equations", "linear"),  # one substitution
+        ("eliminate a varible", "variabl"),  # one deletion
+    ],
+)
+def test_misspelled_anchor_passes_anchor_step(
+    question: str, anchor: str, elim_lex: Lexicon
+) -> None:
+    assert TYPO_MIN_LENGTH == 5
+    d = route(question, elim_lex)
+    assert d.reason != "no_anchor_term"
+    assert anchor in d.anchor_hits
+
+
+def test_short_near_match_is_not_an_anchor(lex: Lexicon) -> None:
+    assert stem("salving") == "salv" and stem("eqations") == "eqat"
+    assert anchor_matches("salv", lex.anchors) == ()  # 4 vs 4 letters
+    assert anchor_matches("eqat", lex.anchors) == ()  # 4 vs 5 letters
+    d = route("salving eqations", lex)
+    assert (d.route, d.reason) == ("refuse", "no_anchor_term")
+
+
+def test_typo_does_not_reach_coverage_or_banned(elim_lex: Lexicon) -> None:
+    d = route("eliminashun", elim_lex)
+    assert d.unmatched == ("eliminashun",)
+    assert d.banned_hits == ()
+
+
+@pytest.mark.parametrize(
+    "question", ["what is the capital of France", "explain polygons"]
+)
+def test_off_topic_still_refused(question: str, elim_lex: Lexicon) -> None:
+    assert route(question, elim_lex).route == "refuse"
